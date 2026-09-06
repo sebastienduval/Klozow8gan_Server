@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "csv-file-to-json": "^4.0.5",
+    "csv-parse": "^7.0.2",
+    "csv-stringify": "^6.8.3",
+    "express": "^5.2.1"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true
+  }
+}
