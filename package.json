@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
     "csv-file-to-json": "^4.0.5",
     "csv-parse": "^7.0.2",
     "csv-stringify": "^6.8.3",

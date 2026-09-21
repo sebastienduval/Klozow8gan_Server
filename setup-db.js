@@ -13,13 +13,13 @@ function setupDb()
 
   // Execute table creation inside a single SQL script string
   const setupQuery = `
-    -- 1. Categories Table (Hierarchy)
+    -- Categories Table (Hierarchy)
     CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL
     );
 
-    -- 2. Words Table (Dictionary)
+    -- Words Table (Dictionary)
     CREATE TABLE IF NOT EXISTS words (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         abenaki TEXT NOT NULL,
@@ -30,7 +30,7 @@ function setupDb()
         infinitive TEXT
     );
 
-    -- 3. Junction Table (Word-to-Category Many-to-Many Link)
+    -- Junction Table (Word-to-Category Many-to-Many Link)
     CREATE TABLE IF NOT EXISTS word_categories (
         word_id INTEGER,
         category_id INTEGER,
@@ -39,9 +39,31 @@ function setupDb()
         FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
     );
 
-    -- 4. Indices for Fast Searching
+    -- Quiz Table (Each quiz has an id and a name)
+    CREATE TABLE IF NOT EXISTS quiz (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        author TEXT NOT NULL
+    );
+
+    -- Junction Table (Word-to-Quiz Many-to-Many Link)
+    --    A word can belong to many quizzes, and a quiz can have many words.
+    CREATE TABLE IF NOT EXISTS word_quiz (
+        word_id INTEGER,
+        quiz_id INTEGER,
+        PRIMARY KEY (word_id, quiz_id),
+        FOREIGN KEY (word_id) REFERENCES words (id) ON DELETE CASCADE,
+        FOREIGN KEY (quiz_id) REFERENCES quiz (id) ON DELETE CASCADE
+    );    
+
+    -- Indices for Fast Searching
     CREATE INDEX IF NOT EXISTS idx_abenaki_search ON words(abenaki);
     CREATE INDEX IF NOT EXISTS idx_french_search ON words(french);
+
+    -- Indices for Quiz lookups
+    CREATE INDEX IF NOT EXISTS idx_quiz_name ON quiz(name);
+    CREATE INDEX IF NOT EXISTS idx_word_quiz_word ON word_quiz(word_id);
+    CREATE INDEX IF NOT EXISTS idx_word_quiz_quiz ON word_quiz(quiz_id);    
   `;
 
   try {

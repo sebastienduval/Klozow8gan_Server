@@ -12,8 +12,8 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}\\db_to_csv.js",
-            "args": ["${workspaceFolder}\\Dict.csv"]
+            "program": "${workspaceFolder}\\server.js",
+            "args": []
         }
     ]
 }
