@@ -1,5 +1,5 @@
 const path = require('path');
-const { db_to_csv } = require('./db_to_tools');
+const { db_to_csv } = require('./db_tools');
 const DB_PATH = path.join(__dirname, 'dictionary.db');
 const CSV_FILE_PATH = process.argv[2]; 
 
