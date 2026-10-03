@@ -290,7 +290,7 @@ app.put('/api/export', (req, res) =>
             console.log(csv_filepath + ' was deleted');
         });
 
-        commitAndPushDict(json_filepath, main);
+        commitAndPushDict(json_filepath, 'main');
 
         res.json({ message: 'Words exported successfully' });
     } 
