@@ -236,13 +236,15 @@ app.delete('/api/words/:id', (req, res) => {
 });
 
 
-async function commitAndPushDict(file, branch) 
+async function commitAndPushDict(repo_path, file, branch) 
 {
   const message = 'Update ' + file + ' to ' + branch;
 
   try {
+    execSync(`cd ` + repo_path);
+
     // 1. Stage the file
-    await execSync(`git add ${file}`);
+    execSync(`git add ${file}`);
 
     // 2. Check if there are actually changes to commit
     // execSync returns a Buffer, so we must call .toString()
@@ -295,7 +297,7 @@ app.put('/api/export', (req, res) =>
             console.log(csv_filepath + ' was deleted');
         });
 
-        commitAndPushDict(json_filepath, 'main');
+        commitAndPushDict("../Klozow8gan_Web/", "Dict.json", 'main');
 
         res.json({ message: 'Words exported successfully' });
     } 
