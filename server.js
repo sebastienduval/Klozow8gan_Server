@@ -297,7 +297,7 @@ app.put('/api/export', (req, res) =>
             console.log(csv_filepath + ' was deleted');
         });
 
-        commitAndPushDict("../Klozow8gan_Web/", "Dict.json", 'main');
+        commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/", "Dict.json", 'main');
 
         res.json({ message: 'Words exported successfully' });
     } 
