@@ -4,6 +4,11 @@ const path = require('path');
 const cors = require('cors');
 const { db_to_csv, csv_to_json } = require('./db_tools');
 const fs = require('node:fs');
+const { v4: uuidv4} = require('uuid');
+const { exec } = require('child_process');
+const util = require('util');
+const execAsync = util.promisify(exec);
+
 
 const app = express();
 const PORT = 3000;
@@ -232,6 +237,36 @@ app.delete('/api/words/:id', (req, res) => {
     }
 });
 
+
+async function commitAndPushDict(file, branch) 
+{
+  const message = 'Update ' + file + ' to ' + branch;
+
+  try {
+    // 1. Stage the file
+    await execAsync(`git add ${file}`);
+
+    // 2. Check if there are actually changes to commit
+    const { stdout: status } = await execAsync('git status --porcelain');
+    if (!status.includes(file)) {
+      console.log(`No changes detected in ${file}. Skipping commit.`);
+      return;
+    }
+
+    // 3. Commit the file
+    await execAsync(`git commit -m "${message}"`);
+    
+    // 4. Push to remote
+    const { stdout, stderr } = await execAsync(`git push origin ${branch}`);
+    
+    // Git push outputs to stderr even on success, so we log both
+    console.log('Push complete:', stdout || stderr);
+    
+  } catch (error) {
+    console.error('Git operation failed:', error.message);
+  }
+}
+
 // ---------------------------------------------------------
 // PUT: Export the dictionary.
 // ---------------------------------------------------------
@@ -239,16 +274,23 @@ app.put('/api/export', (req, res) =>
 {
     try 
     {
-        console.log("Export");
-        db_to_csv('dictionary.db', 'tmp.csv');
-        csv_to_json("tmp.csv", "../Klozow8gan_Web/Dict.json");
+        const export_folder = "../Klozow8gan_Web/";
+        const csv_filepath = export_folder + uuidv4() + ".csv";
+        const json_filepath = export_folder + "Dict.json";        
 
-        fs.unlink('tmp.csv', (err) => {
-            if (err) throw err;
-            console.log('tmp.csv was deleted');
+        console.log("Export");
+        db_to_csv('dictionary.db', csv_filepath);
+        csv_to_json(csv_filepath, json_filepath);
+
+        fs.unlink( csv_filepath, (err) => {
+            if (err) {
+                res.json({ message: 'Error while deleting ' + csv_filepath + '.' });
+                throw err;
+            }
+            console.log(csv_filepath + ' was deleted');
         });
-        
-        
+
+        commitAndPushDict(json_filepath, main);
 
         res.json({ message: 'Words exported successfully' });
     } 
