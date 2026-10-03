@@ -5,9 +5,7 @@ const cors = require('cors');
 const { db_to_csv, csv_to_json } = require('./db_tools');
 const fs = require('node:fs');
 const { v4: uuidv4} = require('uuid');
-const { exec } = require('child_process');
-const util = require('util');
-const execAsync = util.promisify(exec);
+const { execSync } = require('child_process');
 
 
 const app = express();
@@ -244,26 +242,33 @@ async function commitAndPushDict(file, branch)
 
   try {
     // 1. Stage the file
-    await execAsync(`git add ${file}`);
+    await execSync(`git add ${file}`);
 
     // 2. Check if there are actually changes to commit
-    const { stdout: status } = await execAsync('git status --porcelain');
+    // execSync returns a Buffer, so we must call .toString()
+    const status = execSync('git status --porcelain').toString();
     if (!status.includes(file)) {
       console.log(`No changes detected in ${file}. Skipping commit.`);
       return;
     }
 
     // 3. Commit the file
-    await execAsync(`git commit -m "${message}"`);
+    execSync(`git commit -m "${message}"`);
     
     // 4. Push to remote
-    const { stdout, stderr } = await execAsync(`git push origin ${branch}`);
-    
-    // Git push outputs to stderr even on success, so we log both
-    console.log('Push complete:', stdout || stderr);
+    // Passing { stdio: 'pipe' } captures the output to be printed or logged
+    const pushOutput = execSync(`git push origin ${branch}`, { stdio: 'pipe' }).toString();
+    console.log('Push complete:\n', pushOutput);
     
   } catch (error) {
+    // If a command fails (non-zero exit code), execSync throws an error
     console.error('Git operation failed:', error.message);
+    
+    // Print the specific git error output if available
+    if (error.stderr) {
+      console.error('Git error details:\n', error.stderr.toString());
+    }
+    throw error;
   }
 }
 
