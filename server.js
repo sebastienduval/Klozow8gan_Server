@@ -241,25 +241,25 @@ async function commitAndPushDict(repo_path, file, branch)
   const message = 'Update ' + file + ' to ' + branch;
 
   try {
-    execSync(`cd ` + repo_path);
 
+    let env = {cwd: repo_path, enencoding: 'utf-8'};
     // 1. Stage the file
-    execSync(`git add ${file}`);
+    execSync(`git add ${file}`,env);
 
     // 2. Check if there are actually changes to commit
     // execSync returns a Buffer, so we must call .toString()
-    const status = execSync('git status --porcelain').toString();
+    const status = execSync('git status --porcelain', env).toString();
     if (!status.includes(file)) {
       console.log(`No changes detected in ${file}. Skipping commit.`);
       return;
     }
 
     // 3. Commit the file
-    execSync(`git commit -m "${message}"`);
+    execSync(`git commit -m "${message}"`, env);
     
     // 4. Push to remote
     // Passing { stdio: 'pipe' } captures the output to be printed or logged
-    const pushOutput = execSync(`git push origin ${branch}`, { stdio: 'pipe' }).toString();
+    const pushOutput = execSync(`git push origin ${branch}`, {cwd: repo_path, enencoding: 'utf-8', stdio: 'pipe' }).toString();
     console.log('Push complete:\n', pushOutput);
     
   } catch (error) {
