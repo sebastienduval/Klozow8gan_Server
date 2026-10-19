@@ -340,7 +340,7 @@ app.put('/api/quizzes/:id/export', async (req, res) => {
         };
 
         // 3. File Handling Setup
-        const export_folder = "../Klozow8gan_Web/Quiz/";
+        const export_folder = "../Klozow8gan_Web/quiz/";
         const json_filepath = export_folder + `Quiz_${uuidv4()}.json`;
         
         // 4. Write JSON file
@@ -349,11 +349,14 @@ app.put('/api/quizzes/:id/export', async (req, res) => {
         
         console.log(`Successfully exported quiz ${quizId} to ${json_filepath}`);
 
+        generateQuizIndex(export_folder, export_folder + 'user_quiz_index.html', export_folder + 'user_quiz_index.html.template');
+
         // 5. Cleanup (no intermediate CSV step needed for JSON)
         // (No temporary file cleanup needed here)
 
         // 6. Git Commit and Push
-        await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/Quiz/", "Quiz_*.json", 'main');
+        await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/quiz/", "Quiz_*.json", 'main');
+        await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/quiz/", export_folder + 'user_quiz_index.html', 'main');        
 
         res.json({ 
             message: 'Quiz exported successfully', 
