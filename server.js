@@ -3,6 +3,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const cors = require('cors');
 const { db_to_csv, csv_to_json } = require('./db_tools');
+const { generateQuizIndex } = require('./generate_quiz_index.html');
 const fs = require('node:fs');
 const { v4: uuidv4} = require('uuid');
 const { execSync } = require('child_process');
@@ -235,7 +236,7 @@ app.delete('/api/words/:id', (req, res) => {
     }
 });
 
-
+// Helper function definition (kept outside the handler for clarity)
 async function commitAndPushDict(repo_path, file, branch) 
 {
   const message = 'Update ' + file + ' to ' + branch;
@@ -274,6 +275,7 @@ async function commitAndPushDict(repo_path, file, branch)
   }
 }
 
+
 // ---------------------------------------------------------
 // PUT: Export the dictionary.
 // ---------------------------------------------------------
@@ -285,7 +287,7 @@ app.put('/api/export', (req, res) =>
         const csv_filepath = export_folder + uuidv4() + ".csv";
         const json_filepath = export_folder + "Dict.json";        
 
-        console.log("Export");
+        console.log("Exporting Dictionary");
         db_to_csv('dictionary.db', csv_filepath);
         csv_to_json(csv_filepath, json_filepath);
 
@@ -310,6 +312,63 @@ app.put('/api/export', (req, res) =>
 // ---------------------------------------------------------
 // QUIZZES
 // ---------------------------------------------------------
+
+// ---------------------------------------------------------
+// NEW: PUT Quiz Export
+// Export a full quiz structure to a JSON file.
+// Example format derived from ABK-1902.2.json
+// ---------------------------------------------------------
+app.put('/api/quizzes/:id/export', async (req, res) => {
+    const quizId = req.params.id;
+
+    try {
+        // 1. Fetch quiz data
+        const quizData = fetchQuiz(quizId);
+        if (!quizData) {
+            return res.status(404).json({ error: 'Quiz not found' });
+        }
+
+        // 2. Build the export structure
+        // We extract only the 'abenaki' field from the associated words 
+        // to match the simplified format of the example JSON.
+        const wordList = quizData.words.map(word => word.abenaki);
+
+        const exportObject = {
+            title: quizData.name,
+            author: quizData.author,
+            wordList: wordList,
+        };
+
+        // 3. File Handling Setup
+        const export_folder = "../Klozow8gan_Web/Quiz/";
+        const json_filepath = export_folder + `Quiz_${uuidv4()}.json`;
+        
+        // 4. Write JSON file
+        const jsonString = JSON.stringify(exportObject, null, 2);
+        fs.writeFileSync(json_filepath, jsonString, 'utf-8');
+        
+        console.log(`Successfully exported quiz ${quizId} to ${json_filepath}`);
+
+        // 5. Cleanup (no intermediate CSV step needed for JSON)
+        // (No temporary file cleanup needed here)
+
+        // 6. Git Commit and Push
+        await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/Quiz/", "Quiz_*.json", 'main');
+
+        res.json({ 
+            message: 'Quiz exported successfully', 
+            export_file: json_filepath, 
+            title: exportObject.title 
+        });
+    } catch (error) {
+        console.error('Quiz Export Error:', error);
+        res.status(500).json({ error: 'Failed to export quiz.', details: error.message });
+    }
+});
+
+
+// ---------------------------------------------------------
+// QUIZZES (Remaining CRUD endpoints remain unchanged)
 // ---------------------------------------------------------
 // Helper: Fetch a full quiz with its list of words.
 //   GET /api/quizzes/:id  (and internally)
@@ -372,30 +431,39 @@ app.post('/api/quizzes', (req, res) => {
     if (!name || !author) {
         return res.status(400).json({ error: 'Missing required fields: name, author.' });
     }
+    /*
     if (!Array.isArray(words) || words.length === 0) {
         return res.status(400).json({ error: 'A quiz must contain at least one word.' });
     }
+    */
 
     // Validate that every referenced word exists
     const badWords = [];
-    for (const item of words) {
-        const wordId = typeof item === 'string' ? parseInt(item, 10) : item.id;
-        if (!wordId) continue;
-        const exists = db.prepare('SELECT 1 FROM words WHERE id = ?').get(wordId);
-        if (!exists) badWords.push(wordId);
+    if ( words )
+    {
+        for (const item of words) {
+            const wordId = typeof item === 'string' ? parseInt(item, 10) : item.id;
+            if (!wordId) continue;
+            const exists = db.prepare('SELECT 1 FROM words WHERE id = ?').get(wordId);
+            if (!exists) badWords.push(wordId);
+        }
     }
     if (badWords.length) {
         return res.status(400).json({ error: 'Unknown word ids:', words: badWords });
     }
 
+    let quiz_id;
     // Insert quiz + words atomically
     db.transaction(() => {
-        const quiz_id = db.prepare('INSERT INTO quiz (name, author) VALUES (?, ?)')
+        quiz_id = db.prepare('INSERT INTO quiz (name, author) VALUES (?, ?)')
             .run(name, author).lastInsertRowid;
 
-        for (const { word_id } of normalizeWords(words, quiz_id)) {
-            db.prepare('INSERT INTO word_quiz (word_id, quiz_id) VALUES (?, ?)')
-                .run(word_id, quiz_id);
+        if ( words )
+        {            
+            for (const { word_id } of normalizeWords(words, quiz_id)) {
+                db.prepare('INSERT INTO word_quiz (word_id, quiz_id) VALUES (?, ?)')
+                    .run(word_id, quiz_id);
+            }
         }
     })();
 
