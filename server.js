@@ -356,7 +356,7 @@ app.put('/api/quizzes/:id/export', async (req, res) => {
 
         // 6. Git Commit and Push
         await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/quiz/", "Quiz_*.json", 'main');
-        await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/quiz/", export_folder + 'user_quiz_index.html', 'main');        
+        await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/quiz/", 'user_quiz_index.html', 'main');        
 
         res.json({ 
             message: 'Quiz exported successfully', 
