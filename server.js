@@ -341,7 +341,7 @@ app.put('/api/quizzes/:id/export', async (req, res) => {
 
         // 3. File Handling Setup
         const export_folder = "../Klozow8gan_Web/quiz/";
-        const json_filepath = export_folder + `Quiz_${uuidv4()}.json`;
+        const json_filepath = export_folder + `Quiz_${quizId}.json`;
         
         // 4. Write JSON file
         const jsonString = JSON.stringify(exportObject, null, 2);
