@@ -108,6 +108,6 @@ const OUTPUT_FILE = '../Klozow8gan_Web/quiz/user_quiz_index.html';
 const INPUT_FILE = '../Klozow8gan_Web/quiz/user_quiz_index.html.template';
 
 // Run the generator
-generateQuizIndex(JSON_DIR, OUTPUT_FILE, INPUT_FILE);
+// generateQuizIndex(JSON_DIR, OUTPUT_FILE, INPUT_FILE);
 
 module.exports = { generateQuizIndex };
