@@ -65,7 +65,7 @@ function generateQuizIndex(jsonDirectoryPath, outputFilePath, inputHtmlPath) {
                 
                 // Construct the HTML list item
                 const listHtml = `  <li class="quiz-item">
-    <a href="quiz.html/?quiz_json=${filename}">${linkText}</a>
+    <a href="quiz.html?quiz_json=${filename}">${linkText}</a>
   </li>`;
                 
                 listItems.push(listHtml);
