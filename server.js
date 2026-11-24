@@ -652,6 +652,167 @@ app.delete('/api/quizzes/:id/words/:wordId', (req, res) => {
     }
 });
 
+// ---------------------------------------------------------
+// MORPHEMES: Find / Search morphemes
+// GET /api/morphemes?q=...&morpheme=...&type=...&description=...
+// (also aliased at GET /api/morphemes/find)
+// ---------------------------------------------------------
+function handleFindMorphemes(req, res) {
+    const { q, morpheme, type, description } = req.query;
+
+    let sql = 'SELECT * FROM morphemes WHERE 1 = 1';
+    const params = [];
+
+    if (q && String(q).trim() !== '') {
+        const pattern = `%${escapeLike(String(q).trim())}%`;
+        sql += ' AND (morpheme LIKE ? ESCAPE \'\\\' OR description LIKE ? ESCAPE \'\\\' OR type LIKE ? ESCAPE \'\\\')';
+        params.push(pattern, pattern, pattern);
+    }
+
+    if (morpheme && String(morpheme).trim() !== '') {
+        sql += ' AND morpheme LIKE ? ESCAPE \'\\\'';
+        params.push(`%${escapeLike(String(morpheme).trim())}%`);
+    }
+
+    if (type && String(type).trim() !== '') {
+        sql += ' AND type LIKE ? ESCAPE \'\\\'';
+        params.push(`%${escapeLike(String(type).trim())}%`);
+    }
+
+    if (description && String(description).trim() !== '') {
+        sql += ' AND description LIKE ? ESCAPE \'\\\'';
+        params.push(`%${escapeLike(String(description).trim())}%`);
+    }
+
+    sql += ' ORDER BY morpheme COLLATE NOCASE ASC, id ASC';
+
+    try {
+        const rows = db.prepare(sql).all(...params);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+}
+
+app.get('/api/morphemes/find', handleFindMorphemes);
+app.get('/api/morphemes', handleFindMorphemes);
+
+// ---------------------------------------------------------
+// MORPHEMES: Read single morpheme by id
+// GET /api/morphemes/:id
+// ---------------------------------------------------------
+app.get('/api/morphemes/:id', (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const row = db.prepare('SELECT * FROM morphemes WHERE id = ?').get(id);
+        if (!row) {
+            return res.status(404).json({ error: 'Morpheme not found' });
+        }
+        res.json(row);
+    } catch (error) {
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+});
+
+// ---------------------------------------------------------
+// MORPHEMES: Add a new morpheme
+// POST /api/morphemes
+// Body: { morpheme, description, type }
+// ---------------------------------------------------------
+app.post('/api/morphemes', (req, res) => {
+    const { morpheme, description, type } = req.body;
+
+    if (!morpheme || !description || !type) {
+        return res.status(400).json({
+            error: 'Missing required fields: morpheme, description, type.'
+        });
+    }
+
+    try {
+        const stmt = db.prepare(`
+            INSERT INTO morphemes (morpheme, description, type)
+            VALUES (?, ?, ?)
+        `);
+        const info = stmt.run(
+            String(morpheme).trim(),
+            String(description).trim(),
+            String(type).trim()
+        );
+
+        const created = db.prepare('SELECT * FROM morphemes WHERE id = ?').get(info.lastInsertRowid);
+
+        res.status(201).json({
+            message: 'Morpheme added successfully',
+            morpheme_id: info.lastInsertRowid,
+            data: created
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+});
+
+// ---------------------------------------------------------
+// MORPHEMES: Modify an existing morpheme
+// PUT /api/morphemes/:id
+// Body: { morpheme?, description?, type? }
+// ---------------------------------------------------------
+app.put('/api/morphemes/:id', (req, res) => {
+    const { id } = req.params;
+    const { morpheme, description, type } = req.body;
+
+    try {
+        const stmt = db.prepare(`
+            UPDATE morphemes
+            SET morpheme = COALESCE(?, morpheme),
+                description = COALESCE(?, description),
+                type = COALESCE(?, type)
+            WHERE id = ?
+        `);
+
+        const info = stmt.run(
+            morpheme !== undefined ? String(morpheme).trim() : null,
+            description !== undefined ? String(description).trim() : null,
+            type !== undefined ? String(type).trim() : null,
+            id
+        );
+
+        if (info.changes === 0) {
+            return res.status(404).json({ error: 'Morpheme not found' });
+        }
+
+        const updated = db.prepare('SELECT * FROM morphemes WHERE id = ?').get(id);
+
+        res.json({
+            message: 'Morpheme updated successfully',
+            data: updated
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+});
+
+// ---------------------------------------------------------
+// MORPHEMES: Remove a morpheme
+// DELETE /api/morphemes/:id
+// ---------------------------------------------------------
+app.delete('/api/morphemes/:id', (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const stmt = db.prepare('DELETE FROM morphemes WHERE id = ?');
+        const info = stmt.run(id);
+
+        if (info.changes === 0) {
+            return res.status(404).json({ error: 'Morpheme not found' });
+        }
+
+        res.json({ message: 'Morpheme deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+});
+
 // Start the server
 app.listen(PORT, () => {
     console.log(`🚀 API running on http://localhost:${PORT}`);

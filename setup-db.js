@@ -54,7 +54,15 @@ function setupDb()
         PRIMARY KEY (word_id, quiz_id),
         FOREIGN KEY (word_id) REFERENCES words (id) ON DELETE CASCADE,
         FOREIGN KEY (quiz_id) REFERENCES quiz (id) ON DELETE CASCADE
-    );    
+    );
+
+    -- Morphemes Table
+    CREATE TABLE IF NOT EXISTS morphemes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        morpheme TEXT NOT NULL,
+        description TEXT NOT NULL,
+        type TEXT NOT NULL
+    );
 
     -- Indices for Fast Searching
     CREATE INDEX IF NOT EXISTS idx_abenaki_search ON words(abenaki);
@@ -63,7 +71,11 @@ function setupDb()
     -- Indices for Quiz lookups
     CREATE INDEX IF NOT EXISTS idx_quiz_name ON quiz(name);
     CREATE INDEX IF NOT EXISTS idx_word_quiz_word ON word_quiz(word_id);
-    CREATE INDEX IF NOT EXISTS idx_word_quiz_quiz ON word_quiz(quiz_id);    
+    CREATE INDEX IF NOT EXISTS idx_word_quiz_quiz ON word_quiz(quiz_id);
+
+    -- Indices for Morpheme lookups
+    CREATE INDEX IF NOT EXISTS idx_morphemes_morpheme ON morphemes(morpheme);
+    CREATE INDEX IF NOT EXISTS idx_morphemes_type ON morphemes(type);
   `;
 
   try {
@@ -75,7 +87,7 @@ function setupDb()
   } finally {
     // Cleanly close the database connection
     db.close();
-  }  
+  }
 }
 
 setupDb();
