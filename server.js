@@ -1,25 +1,43 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const sqlite = require('node:sqlite');
 const path = require('path');
 const cors = require('cors');
 const { db_to_csv, csv_to_json } = require('./db_tools');
 const { generateQuizIndex } = require('./generate_quiz_index');
 const fs = require('node:fs');
-const { v4: uuidv4} = require('uuid');
+const { v4: uuidv4 } = require('uuid');
 const { execSync } = require('child_process');
 
+const Database = sqlite.Database || sqlite.DatabaseSync;
 
 const app = express();
 const PORT = 3000;
 
 // Middleware to parse incoming JSON payloads
 app.use(express.json());
-app.use(cors()); 
-
+app.use(cors());
 
 // Connect to the database and enforce foreign keys
-const db = new Database(path.join(__dirname, 'dictionary.db'));
-db.pragma('foreign_keys = ON');
+const db = new Database(path.join(__dirname, 'dictionary.db'), {
+    enableForeignKeyConstraints: true,
+});
+db.exec('PRAGMA foreign_keys = ON;');
+
+function runTransaction(fn) {
+    db.exec('BEGIN');
+    try {
+        const result = fn();
+        db.exec('COMMIT');
+        return result;
+    } catch (error) {
+        try {
+            db.exec('ROLLBACK');
+        } catch (_) {
+            // Ignore rollback errors if no active transaction remains
+        }
+        throw error;
+    }
+}
 
 // Escape LIKE metacharacters so user input is treated literally.
 function escapeLike(str) {
@@ -30,22 +48,20 @@ function escapeLike(str) {
 // CREATE: Add a new word
 // ---------------------------------------------------------
 app.post('/api/words', (req, res) => {
-    const 
-    { 
-        abenaki, 
-        french, 
-        type, 
-        source, 
+    const {
+        abenaki,
+        french,
+        type,
+        source,
         alternative_source,
-        infinitive
+        infinitive,
     } = req.body;
 
     console.log(req.body);
     console.log(abenaki + " " + french + " " + type);
 
     // Basic validation
-    if (!abenaki || !french || !type) 
-    {
+    if (!abenaki || !french || !type) {
         return res.status(400).json({ error: 'Missing required fields.' });
     }
 
@@ -55,19 +71,19 @@ app.post('/api/words', (req, res) => {
             (abenaki, french, type, source, alternative_source, infinitive) 
             VALUES (?, ?, ?, ?, ?, ?)
         `);
-        
+
         const info = stmt.run(
-            abenaki, 
-            french, 
-            type, 
+            abenaki,
+            french,
+            type,
             source || null,
-            alternative_source || null, 
+            alternative_source || null,
             infinitive || null
         );
 
-        res.status(201).json({ 
-            message: 'Word added successfully', 
-            word_id: info.lastInsertRowid 
+        res.status(201).json({
+            message: 'Word added successfully',
+            word_id: info.lastInsertRowid,
         });
     } catch (error) {
         res.status(500).json({ error: 'Database error', details: error.message });
@@ -101,7 +117,6 @@ app.get('/api/words/:id', (req, res) => {
 //          (also accepts ?q={starts, ends} style params)
 // ---------------------------------------------------------
 app.get('/api/search/', (req, res) => {
-
     // Express parses complex query strings into objects, so support both
     // ?starts=foo&ends=bar and ?q={starts, ends} styles.
     let startsWith = null;
@@ -112,12 +127,9 @@ app.get('/api/search/', (req, res) => {
     if (raw && typeof raw === 'object') {
         startsWith = raw.starts || null;
         endsWith = raw.ends || null;
-        if ( raw.language == "abenaki" || raw.language == "french")
-        {
+        if (raw.language == "abenaki" || raw.language == "french") {
             language = raw.language;
-        }
-        else
-        {
+        } else {
             return res.status(404).json({ error: 'Invalid language.' });
         }
     } else if (typeof raw === 'string') {
@@ -125,8 +137,7 @@ app.get('/api/search/', (req, res) => {
     }
 
     // No filter provided -> return every word.
-    if (!startsWith && !endsWith) 
-    {
+    if (!startsWith && !endsWith) {
         let sql = 'SELECT * FROM words';
         sql += ' ORDER BY ' + language + ' COLLATE NOCASE ASC';
         let query = db.prepare(sql);
@@ -149,7 +160,7 @@ app.get('/api/search/', (req, res) => {
     }
     if (endsWith) {
         sql += ' AND ' + language + ' LIKE ?';
-        params.push('%' + escapeLike(endsWith));      // ends with "bar"
+        params.push('%' + escapeLike(endsWith));
     }
 
     sql += ' ORDER BY ' + language + ' COLLATE NOCASE ASC';
@@ -169,14 +180,13 @@ app.get('/api/search/', (req, res) => {
 // ---------------------------------------------------------
 app.put('/api/words/:id', (req, res) => {
     const { id } = req.params;
-    const 
-    { 
-        abenaki, 
-        french, 
-        type, 
-        source, 
+    const {
+        abenaki,
+        french,
+        type,
+        source,
         alternative_source,
-        infinitive
+        infinitive,
     } = req.body;
 
     try {
@@ -193,11 +203,11 @@ app.put('/api/words/:id', (req, res) => {
 
         // COALESCE allows partial updates (if a field is undefined, it keeps the old value)
         const info = stmt.run(
-            abenaki, 
-            french, 
-            type, 
+            abenaki,
+            french,
+            type,
             source,
-            alternative_source, 
+            alternative_source,
             infinitive,
             id
         );
@@ -228,7 +238,7 @@ app.delete('/api/words/:id', (req, res) => {
             return res.status(404).json({ error: 'Word not found' });
         }
 
-        // Note: Because we used 'ON DELETE CASCADE' in our schema, 
+        // Note: Because we used 'ON DELETE CASCADE' in our schema,
         // this will also automatically delete any links in the word_categories table.
         res.json({ message: 'Word deleted successfully' });
     } catch (error) {
@@ -237,61 +247,55 @@ app.delete('/api/words/:id', (req, res) => {
 });
 
 // Helper function definition (kept outside the handler for clarity)
-async function commitAndPushDict(repo_path, file, branch) 
-{
-  const message = 'Update ' + file + ' to ' + branch;
+async function commitAndPushDict(repo_path, file, branch) {
+    const message = 'Update ' + file + ' to ' + branch;
 
-  try {
+    try {
+        let env = { cwd: repo_path, encoding: 'utf-8' };
+        // 1. Stage the file
+        execSync(`git add ${file}`, env);
 
-    let env = {cwd: repo_path, enencoding: 'utf-8'};
-    // 1. Stage the file
-    execSync(`git add ${file}`,env);
+        // 2. Check if there are actually changes to commit
+        const status = execSync('git status --porcelain', env).toString();
+        if (!status.includes(file)) {
+            console.log(`No changes detected in ${file}. Skipping commit.`);
+            return;
+        }
 
-    // 2. Check if there are actually changes to commit
-    // execSync returns a Buffer, so we must call .toString()
-    const status = execSync('git status --porcelain', env).toString();
-    if (!status.includes(file)) {
-      console.log(`No changes detected in ${file}. Skipping commit.`);
-      return;
+        // 3. Commit the file
+        execSync(`git commit -m "${message}"`, env);
+
+        // 4. Push to remote
+        const pushOutput = execSync(`git push origin ${branch}`, {
+            cwd: repo_path,
+            encoding: 'utf-8',
+            stdio: 'pipe',
+        }).toString();
+        console.log('Push complete:\n', pushOutput);
+    } catch (error) {
+        console.error('Git operation failed:', error.message);
+
+        if (error.stderr) {
+            console.error('Git error details:\n', error.stderr.toString());
+        }
+        throw error;
     }
-
-    // 3. Commit the file
-    execSync(`git commit -m "${message}"`, env);
-    
-    // 4. Push to remote
-    // Passing { stdio: 'pipe' } captures the output to be printed or logged
-    const pushOutput = execSync(`git push origin ${branch}`, {cwd: repo_path, enencoding: 'utf-8', stdio: 'pipe' }).toString();
-    console.log('Push complete:\n', pushOutput);
-    
-  } catch (error) {
-    // If a command fails (non-zero exit code), execSync throws an error
-    console.error('Git operation failed:', error.message);
-    
-    // Print the specific git error output if available
-    if (error.stderr) {
-      console.error('Git error details:\n', error.stderr.toString());
-    }
-    throw error;
-  }
 }
-
 
 // ---------------------------------------------------------
 // PUT: Export the dictionary.
 // ---------------------------------------------------------
-app.put('/api/export', (req, res) => 
-{
-    try 
-    {
+app.put('/api/export', (req, res) => {
+    try {
         const export_folder = "../Klozow8gan_Web/";
         const csv_filepath = export_folder + uuidv4() + ".csv";
-        const json_filepath = export_folder + "Dict.json";        
+        const json_filepath = export_folder + "Dict.json";
 
         console.log("Exporting Dictionary");
         db_to_csv('dictionary.db', csv_filepath);
         csv_to_json(csv_filepath, json_filepath);
 
-        fs.unlink( csv_filepath, (err) => {
+        fs.unlink(csv_filepath, (err) => {
             if (err) {
                 res.json({ message: 'Error while deleting ' + csv_filepath + '.' });
                 throw err;
@@ -302,9 +306,7 @@ app.put('/api/export', (req, res) =>
         commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/", "Dict.json", 'main');
 
         res.json({ message: 'Words exported successfully' });
-    } 
-    catch (error) 
-    {
+    } catch (error) {
         res.status(500).json({ error: 'Database error', details: error.message });
     }
 });
@@ -329,8 +331,6 @@ app.put('/api/quizzes/:id/export', async (req, res) => {
         }
 
         // 2. Build the export structure
-        // We extract only the 'abenaki' field from the associated words 
-        // to match the simplified format of the example JSON.
         const wordList = quizData.words.map(word => word.abenaki);
 
         const exportObject = {
@@ -342,26 +342,27 @@ app.put('/api/quizzes/:id/export', async (req, res) => {
         // 3. File Handling Setup
         const export_folder = "../Klozow8gan_Web/quiz/";
         const json_filepath = export_folder + `Quiz_${quizId}.json`;
-        
+
         // 4. Write JSON file
         const jsonString = JSON.stringify(exportObject, null, 2);
         fs.writeFileSync(json_filepath, jsonString, 'utf-8');
-        
+
         console.log(`Successfully exported quiz ${quizId} to ${json_filepath}`);
 
-        generateQuizIndex(export_folder, export_folder + 'user_quiz_index.html', export_folder + 'user_quiz_index.html.template');
+        generateQuizIndex(
+            export_folder,
+            export_folder + 'user_quiz_index.html',
+            export_folder + 'user_quiz_index.html.template'
+        );
 
-        // 5. Cleanup (no intermediate CSV step needed for JSON)
-        // (No temporary file cleanup needed here)
-
-        // 6. Git Commit and Push
+        // 5. Git Commit and Push
         await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/quiz/", "Quiz_*.json", 'main');
-        await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/quiz/", 'user_quiz_index.html', 'main');        
+        await commitAndPushDict("/home/sduval/repo/Klozow8gan_Web/quiz/", 'user_quiz_index.html', 'main');
 
-        res.json({ 
-            message: 'Quiz exported successfully', 
-            export_file: json_filepath, 
-            title: exportObject.title 
+        res.json({
+            message: 'Quiz exported successfully',
+            export_file: json_filepath,
+            title: exportObject.title,
         });
     } catch (error) {
         console.error('Quiz Export Error:', error);
@@ -369,13 +370,8 @@ app.put('/api/quizzes/:id/export', async (req, res) => {
     }
 });
 
-
-// ---------------------------------------------------------
-// QUIZZES (Remaining CRUD endpoints remain unchanged)
 // ---------------------------------------------------------
 // Helper: Fetch a full quiz with its list of words.
-//   GET /api/quizzes/:id  (and internally)
-// A quiz references words via the word_quiz junction table.
 // ---------------------------------------------------------
 function fetchQuiz(quizId) {
     const quiz = db.prepare('SELECT * FROM quiz WHERE id = ?').get(quizId);
@@ -393,8 +389,6 @@ function fetchQuiz(quizId) {
 
 // ---------------------------------------------------------
 // Helper: Normalize a word entry into { word_id, quiz_id }.
-// Accepts either a word id ({ id: 5 } or "5") or a full
-// word object. Deduplicates against the word_quiz PK.
 // ---------------------------------------------------------
 function normalizeWords(words, quizId) {
     const normalized = [];
@@ -434,16 +428,10 @@ app.post('/api/quizzes', (req, res) => {
     if (!name || !author) {
         return res.status(400).json({ error: 'Missing required fields: name, author.' });
     }
-    /*
-    if (!Array.isArray(words) || words.length === 0) {
-        return res.status(400).json({ error: 'A quiz must contain at least one word.' });
-    }
-    */
 
     // Validate that every referenced word exists
     const badWords = [];
-    if ( words )
-    {
+    if (words) {
         for (const item of words) {
             const wordId = typeof item === 'string' ? parseInt(item, 10) : item.id;
             if (!wordId) continue;
@@ -455,22 +443,26 @@ app.post('/api/quizzes', (req, res) => {
         return res.status(400).json({ error: 'Unknown word ids:', words: badWords });
     }
 
-    let quiz_id;
-    // Insert quiz + words atomically
-    db.transaction(() => {
-        quiz_id = db.prepare('INSERT INTO quiz (name, author) VALUES (?, ?)')
-            .run(name, author).lastInsertRowid;
+    try {
+        // Insert quiz + words atomically
+        const quiz_id = runTransaction(() => {
+            const createdQuizId = db.prepare('INSERT INTO quiz (name, author) VALUES (?, ?)')
+                .run(name, author).lastInsertRowid;
 
-        if ( words )
-        {            
-            for (const { word_id } of normalizeWords(words, quiz_id)) {
-                db.prepare('INSERT INTO word_quiz (word_id, quiz_id) VALUES (?, ?)')
-                    .run(word_id, quiz_id);
+            if (words) {
+                for (const { word_id } of normalizeWords(words, createdQuizId)) {
+                    db.prepare('INSERT INTO word_quiz (word_id, quiz_id) VALUES (?, ?)')
+                        .run(word_id, createdQuizId);
+                }
             }
-        }
-    })();
 
-    res.status(201).json(fetchQuiz(quiz_id));
+            return createdQuizId;
+        });
+
+        res.status(201).json(fetchQuiz(quiz_id));
+    } catch (error) {
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
 });
 
 // ---------------------------------------------------------
@@ -517,10 +509,6 @@ app.get('/api/quizzes/:id', (req, res) => {
 // ---------------------------------------------------------
 // MODIFY: Update a quiz's name/author and/or its word list
 // PUT /api/quizzes/:id
-// Body examples:
-//   { name: "New name", author: "Alice" }                 // rename
-//   { words: [1, 2, 3] }                                  // replace whole list
-//   { wordsToAdd: [1], wordsToRemove: [2] }               // partial changes
 // ---------------------------------------------------------
 app.put('/api/quizzes/:id', (req, res) => {
     const { id } = req.params;
@@ -655,7 +643,6 @@ app.delete('/api/quizzes/:id/words/:wordId', (req, res) => {
 // ---------------------------------------------------------
 // MORPHEMES: Find / Search morphemes
 // GET /api/morphemes?q=...&morpheme=...&type=...&description=...
-// (also aliased at GET /api/morphemes/find)
 // ---------------------------------------------------------
 function handleFindMorphemes(req, res) {
     const { q, morpheme, type, description } = req.query;
@@ -725,7 +712,7 @@ app.post('/api/morphemes', (req, res) => {
 
     if (!morpheme || !description || !type) {
         return res.status(400).json({
-            error: 'Missing required fields: morpheme, description, type.'
+            error: 'Missing required fields: morpheme, description, type.',
         });
     }
 
@@ -745,7 +732,7 @@ app.post('/api/morphemes', (req, res) => {
         res.status(201).json({
             message: 'Morpheme added successfully',
             morpheme_id: info.lastInsertRowid,
-            data: created
+            data: created,
         });
     } catch (error) {
         res.status(500).json({ error: 'Database error', details: error.message });
@@ -785,7 +772,7 @@ app.put('/api/morphemes/:id', (req, res) => {
 
         res.json({
             message: 'Morpheme updated successfully',
-            data: updated
+            data: updated,
         });
     } catch (error) {
         res.status(500).json({ error: 'Database error', details: error.message });
