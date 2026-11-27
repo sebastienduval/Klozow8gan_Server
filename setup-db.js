@@ -1,17 +1,15 @@
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 
-function setupDb()
-{
+function setupDb() {
   // Connect to SQLite database (creates 'dictionary.db' if it doesn't exist)
-  const db = new Database(path.join(__dirname, 'dictionary.db'));
+  const db = new DatabaseSync(path.join(__dirname, 'dictionary.db'));
 
-  // Ensure Foreign Key constraints are active (SQLite turns them off by default)
-  db.pragma('foreign_keys = ON');
+  // Ensure Foreign Key constraints are active
+  db.exec('PRAGMA foreign_keys = ON;');
 
   console.log('Setting up SQLite database schema...');
 
-  // Execute table creation inside a single SQL script string
   const setupQuery = `
     -- Categories Table (Hierarchy)
     CREATE TABLE IF NOT EXISTS categories (
@@ -47,7 +45,7 @@ function setupDb()
     );
 
     -- Junction Table (Word-to-Quiz Many-to-Many Link)
-    --    A word can belong to many quizzes, and a quiz can have many words.
+    -- A word can belong to many quizzes, and a quiz can have many words.
     CREATE TABLE IF NOT EXISTS word_quiz (
         word_id INTEGER,
         quiz_id INTEGER,
@@ -79,17 +77,17 @@ function setupDb()
   `;
 
   try {
-    // db.exec runs multi-statement DDL queries
     db.exec(setupQuery);
     console.log('✅ Database setup complete: Tables and indices created (if missing).');
   } catch (error) {
     console.error('❌ Error setting up database:', error);
   } finally {
-    // Cleanly close the database connection
     db.close();
   }
 }
 
-setupDb();
+if (require.main === module) {
+  setupDb();
+}
 
 module.exports = setupDb;
